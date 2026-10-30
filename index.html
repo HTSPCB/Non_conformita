@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTS - Portale Non Conformità</title>
+    <!-- Supabase JS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <!-- EmailJS Client -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <!-- SheetJS per esportazione Excel -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --verde: #2ecc71;
+            --giallo: #f1c40f;
+            --rosso: #e74c3c;
+            --scuro: #2c3e50;
+        }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; margin: 0; padding: 20px; color: #333; }
+        .header { display: flex; justify-content: space-between; align-items: center; background: white; padding: 15px 30px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .header h1 { margin: 0; color: var(--scuro); font-size: 22px; }
+        .container { max-width: 1100px; margin: 0 auto; }
+        .card { background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .btn { padding: 10px 18px; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; color: white; transition: 0.2s; }
+        .btn-primary { background: #3498db; }
+        .btn-success { background: var(--verde); }
+        .btn-warning { background: var(--giallo); color: #333; }
+        .btn-danger { background: var(--rosso); }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background: #f8f9fa; color: var(--scuro); }
+        .badge { padding: 6px 12px; border-radius: 20px; font-weight: bold; font-size: 12px; color: white; display: inline-block; }
+        .badge-verde { background: var(--verde); }
+        .badge-giallo { background: var(--giallo); color: #333; }
+        .badge-rosso { background: var(--rosso); }
+        
+        /* Modal Style */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 25px; border-radius: 10px; width: 400px; max-width: 90%; }
+        .modal-content h3 { margin-top: 0; }
+        .modal-content textarea, .modal-content input, .modal-content select { width: 100%; padding: 8px; margin: 10px 0 15px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+
+<!-- Schermata di Login con Mascotte -->
+<div id="loginOverlay" style="display: flex; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #2c3e50; justify-content: center; align-items: center; z-index: 1000;">
+    <div style="background: white; padding: 30px; border-radius: 12px; width: 380px; text-align: center; box-shadow: 0 4px 15px rgba(0,0,0,0.3);">
+        <img src="Ino_non_conformita.png" alt="Mascotte HTS" style="width: 120px; height: auto; margin-bottom: 10px; border-radius: 8px;">
+        <h2 style="margin: 0 0 5px 0; color: #2c3e50;">HTS Portale NC</h2>
+        <p style="font-size: 13px; color: #666; margin-bottom: 20px;">Accedi per gestire le non conformità</p>
+        
+        <input type="email" id="loginEmail" placeholder="Email aziendale" style="width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box;">
+        <input type="password" id="loginPassword" placeholder="Password" style="width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ccc; border-radius: 5px; box-sizing: border-box;">
+        
+        <button class="btn btn-primary" style="width: 100%; margin-top: 15px; padding: 12px;" onclick="eseguiLogin()">Accedi al Portale</button>
+        <p id="erroreLogin" style="color: #e74c3c; font-size: 12px; margin-top: 10px; font-weight: bold;"></p>
+    </div>
+</div>
+
+<div class="container">
+<div class="header">
+    <h1>HTS - Portale Gestione Non Conformità</h1>
+    <div style="display: flex; gap: 15px; align-items: center;">
+        <!-- Tasto per passare alla pagina delle Segnalazioni -->
+        <a href="segnalazioni.html" class="btn btn-warning" style="padding: 6px 12px; font-size: 12px; text-decoration: none;">📌 Vai alle Segnalazioni</a>
+
+        <div>
+            <label for="filtroAnno"><strong>Anno:</strong> </label>
+            <select id="filtroAnno" onchange="caricaNC()">
+                <option value="TUTTI">-- Tutti gli Anni --</option>
+                <option value="2026" selected>2026</option>
+                <option value="2025">2025</option>
+            </select>
+        </div>
+        <div>
+            <label for="filtroCliente"><strong>Cliente:</strong> </label>
+            <select id="filtroCliente" onchange="caricaNC()">
+                <option value="TUTTI">-- Tutti i Clienti --</option>
+            </select>
+        </div>
+        <button class="btn btn-danger" style="padding: 6px 12px; font-size: 12px;" onclick="eseguiLogout()">Esci</button>
+    </div>
+</div>
+
+<!-- Dashboard KPI -->
+<div class="card" style="margin-bottom: 20px; background: #fff; border-left: 5px solid #3498db;">
+    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 15px;">
+        <h3 style="margin: 0; color: #2c3e50; font-size: 16px;">📊 Dashboard Indicatori Qualità & Impatto Economico</h3>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px;">
+        <div style="background: #ebf5fb; padding: 12px; border-radius: 8px; text-align: center;">
+            <span style="font-size: 12px; color: #5d6d7e; font-weight: bold;">NC APERTE</span>
+            <h2 id="kpiAperte" style="margin: 5px 0 0 0; color: #2980b9;">0</h2>
+        </div>
+
+        <div style="background: #e8f8f5; padding: 12px; border-radius: 8px; text-align: center;">
+            <span style="font-size: 12px; color: #5d6d7e; font-weight: bold;">RECUPERO FORNITORI</span>
+            <h2 id="kpiRecuperoFornitori" style="margin: 5px 0 0 0; color: #27ae60;">€ 0.00</h2>
+        </div>
+
+        <div style="background: #fef9e7; padding: 12px; border-radius: 8px; text-align: center;">
+            <span style="font-size: 12px; color: #5d6d7e; font-weight: bold;">NOTE CREDITO CLIENTI</span>
+            <h2 id="kpiNcClienti" style="margin: 5px 0 0 0; color: #f39c12;">€ 0.00</h2>
+        </div>
+
+        <div style="background: #fdedec; padding: 12px; border-radius: 8px; text-align: center;">
+            <span style="font-size: 12px; color: #c0392b; font-weight: bold;">PERDITA NETTA REALE</span>
+            <h2 id="kpiPerditaReale" style="margin: 5px 0 0 0; color: #c0392b;">€ 0.00</h2>
+        </div>
+
+        <div style="background: #f4ecf7; padding: 12px; border-radius: 8px; text-align: center;">
+            <span style="font-size: 12px; color: #5d6d7e; font-weight: bold;">BILANCIO FORNITORI - CLIENTI</span>
+            <h2 id="kpiBilancio" style="margin: 5px 0 0 0; color: #8e44ad;">€ 0.00</h2>
+        </div>
+    </div>
+</div>
+
+<div style="margin-bottom: 15px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px;">
+    <label style="cursor: pointer; font-weight: bold; color: #2c3e50; display: flex; align-items: center; gap: 6px;">
+        <input type="checkbox" id="chkNascondiChiuse" onchange="caricaNC()" style="width: 16px; height: 16px; cursor: pointer;">
+        Nascondi non conformità chiuse (Stato Rosso)
+    </label>
+
+    <button class="btn btn-success" style="padding: 6px 12px; font-size: 13px; display: flex; align-items: center; gap: 5px;" onclick="esportaInExcel()">
+        📊 Esporta Excel
+    </button>
+</div>
+
+    <div class="card">
+        <button class="btn btn-primary" onclick="apriModalNuovaNC()">+ Nuova Non Conformità</button>
+        <table>
+            <thead>
+                <tr>
+                    <th>Codice CS</th>
+                    <th>Cliente</th>
+                    <th>Descrizione Problema & Tracciabilità</th>
+                    <th>Stato attuale</th>
+                    <th>Azione / Dettagli</th>
+                </tr>
+            </thead>
+            <tbody id="tabellaNC">
+                <!-- I dati verranno caricati qui via JS -->
+            </tbody>
+        </table>
+    </div>
+</div>
+
+
+<!-- Modal Nuova NC -->
+<div id="modalNuova" class="modal">
+    <div class="modal-content">
+        <h3>Nuova Non Conformità (VERDE)</h3>
+        
+        <label>Cliente (Iniziale in maiuscolo)</label>
+        <input type="text" id="nuovoCliente" placeholder="Es. Elesolution">
+        
+        <label>Fornitore / Fabbrica</label>
+        <input type="text" id="nuovoFornitore" placeholder="Es. Fabbrica Estera / Fornitore X">
+
+       <label>Codice CS</label>
+        <input type="text" id="nuovoCodice" placeholder="Inserire codice CS interno o codice cliente">
+
+        <label>Responsabilità / Causa NC</label>
+        <select id="nuovaCausa">
+            <option value="Non Specificato">-- Seleziona Causa / Reparto --</option>
+            <option value="Commerciale HTS">Commerciale HTS</option>
+            <option value="Acquisti HTS">Acquisti HTS</option>
+            <option value="Ufficio Tecnico HTS">Ufficio Tecnico HTS</option>
+            <option value="Fornitore">Fornitore</option>
+            <option value="Cliente">Cliente</option>
+            <option value="Ufficio tecnico HTS & Cliente">Ufficio tecnico HTS & Cliente</option>
+            <option value="Ufficio tecnico HTS & Fornitore">Ufficio tecnico HTS & Fornitore</option>
+            <option value="Commerciale HTS & Cliente">Commerciale HTS & Cliente</option>
+            <option value="Commerciale HTS & Fornitore">Commerciale HTS & Fornitore</option>
+            <option value="Acquisti HTS & Fornitore">Acquisti HTS & Fornitore</option>
+            <option value="Acquisti HTS & Cliente">Acquisti HTS & Cliente</option>
+        </select>
+        
+        <label>Descrizione Problema</label>
+        <textarea id="nuovaDescrizione" rows="3" placeholder="Descrivi brevemente il problema..."></textarea>
+
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <div style="flex: 1;">
+                <label style="font-size: 11px;">Pezzi del Lotto</label>
+                <input type="number" id="nuovoPezziLotto" placeholder="Es. 1000" style="margin: 3px 0 8px 0; padding: 6px;">
+            </div>
+            <div style="flex: 1;">
+                <label style="font-size: 11px;">Pezzi Non Conformi</label>
+                <input type="number" id="nuovoPezziNC" placeholder="Es. 15" style="margin: 3px 0 8px 0; padding: 6px;">
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 5px;">
+            <div style="flex: 1;">
+                <label style="font-size: 11px;">Costo d'Acquisto Unitario (€)</label>
+                <input type="number" step="0.01" id="nuovoCostoAcquisto" placeholder="0.00" style="margin: 3px 0 8px 0; padding: 6px;">
+            </div>
+            <div style="flex: 1;">
+                <label style="font-size: 11px;">Prezzo di Vendita Unitario (€)</label>
+                <input type="number" step="0.01" id="nuovoPrezzoVendita" placeholder="0.00" style="margin: 3px 0 8px 0; padding: 6px;">
+            </div>
+        </div>
+
+	<label>Allega Documento / Email / Foto (Opzionale)</label>
+        <input type="file" id="fileAllegato" style="margin: 5px 0 15px 0; padding: 5px;">
+        
+        <button class="btn btn-success" onclick="salvaNuovaNC()">Crea NC (In Carico Tecnico)</button>
+        <button class="btn" style="background:#ccc; color:#333;" onclick="chiudiModal('modalNuova')">Annulla</button>
+    </div>
+</div>
+
+<!-- Modal Modifica NC (Solo in Stato VERDE) -->
+<div id="modalModifica" class="modal">
+    <div class="modal-content">
+        <h3>Modifica Non Conformità (VERDE)</h3>
+        <input type="hidden" id="editIdNC">
+        
+        <label>Cliente</label>
+        <input type="text" id="editCliente">
+        
+        <label>Fornitore / Fabbrica</label>
+        <input type="text" id="editFornitore">
+
+        <label>Codice CS</label>
+        <input type="text" id="editCodice">
+
+        <label>Responsabilità / Causa NC</label>
+        <select id="editCausa">
+            <option value="Non Specificato">-- Seleziona Causa / Reparto --</option>
+            <option value="Commerciale HTS">Commerciale HTS</option>
+            <option value="Acquisti HTS">Acquisti HTS</option>
+            <option value="Ufficio Tecnico HTS">Ufficio Tecnico HTS</option>
+            <option value="Fornitore">Fornitore</option>
+            <option value="Cliente">Cliente</option>
+            <option value="Ufficio tecnico HTS & Cliente">Ufficio tecnico HTS & Cliente</option>
+            <option value="Ufficio tecnico HTS & Fornitore">Ufficio tecnico HTS & Fornitore</option>
+            <option value="Commerciale HTS & Cliente">Commerciale HTS & Cliente</option>
+            <option value="Commerciale HTS & Fornitore">Commerciale HTS & Fornitore</option>
+            <option value="Acquisti HTS & Fornitore">Acquisti HTS & Fornitore</option>
+            <option value="Acquisti HTS & Cliente">Acquisti HTS & Cliente</option>
+        </select>
+        
+        <label>Descrizione Problema / Aggiornamenti</label>
+        <textarea id="editDescrizione" rows="3"></textarea>
+
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <div style="flex: 1;">
+                <label style="font-size: 11px;">Pezzi del Lotto</label>
+                <input type="number" id="editPezziLotto" style="margin: 3px 0 8px 0; padding: 6px;">
+            </div>
+            <div style="flex: 1;">
+                <label style="font-size: 11px;">Pezzi Non Conformi</label>
+                <input type="number" id="editPezziNC" style="margin: 3px 0 8px 0; padding: 6px;">
+            </div>
+        </div>
+
+        <div style="display: flex; gap: 10px; margin-top: 5px;">
+            <div style="flex: 1;">
+                <label style="font-size: 11px;">Costo d'Acquisto Unitario (€)</label>
+                <input type="number" step="0.01" id="editCostoAcquisto" style="margin: 3px 0 8px 0; padding: 6px;">
+            </div>
+            <div style="flex: 1;">
+                <label style="font-size: 11px;">Prezzo di Vendita Unitario (€)</label>
+                <input type="number" step="0.01" id="editPrezzoVendita" style="margin: 3px 0 8px 0; padding: 6px;">
+            </div>
+        </div>
+        
+        <button class="btn btn-primary" onclick="salvaModificaNC()" style="margin-top: 10px; width: 100%;">Salva Modifiche</button>
+        <button class="btn" style="background:#ccc; color:#333; width: 100%; margin-top: 5px;" onclick="chiudiModal('modalModifica')">Annulla</button>
+    </div>
+</div>
+
+<!-- Modal Cambio Stato / Chiusura -->
+<div id="modalAzione" class="modal">
+    <div class="modal-content" style="width: 450px;">
+        <h3 id="modalTitoloAzione">Aggiorna Stato</h3>
+        <input type="hidden" id="idNCSelezionata">
+        <input type="hidden" id="prossimoStato">
+        
+        <label id="labelNota">Documento di riferimento / Note obbligatorie:</label>
+        <textarea id="notaAzione" rows="2" placeholder="Es. mail del 10/10/2026..."></textarea>
+
+        <div id="sezioneEconomica" style="display: none; background: #f8f9fa; padding: 10px; border-radius: 6px; margin: 10px 0;">
+            <label style="font-size: 13px; font-weight: bold; color: #2c3e50;">Dati Economici / Note di Credito</label>
+            
+            <div style="display: flex; gap: 10px; margin-top: 5px;">
+                <div style="flex: 1;">
+                    <label style="font-size: 11px;">Importo riconosciuto dal fornitore (€)</label>
+                    <input type="number" step="0.01" id="importoNcFornitore" placeholder="0.00" style="margin: 3px 0 8px 0; padding: 6px;">
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-size: 11px;">Importo riconosciuto al Cliente (€)</label>
+                    <input type="number" step="0.01" id="importoNcCliente" placeholder="0.00" style="margin: 3px 0 8px 0; padding: 6px;">
+                </div>
+            </div>
+
+            <label style="font-size: 11px;">Nota di credito numero</label>
+            <input type="text" id="numeroNcDocumento" placeholder="Es. NC-2026-45" style="margin: 3px 0 8px 0; padding: 6px;">
+
+            <label style="font-size: 11px; font-weight: bold; color: #2c3e50;">Allega Nota di Credito / Documento Chiusura</label>
+            <input type="file" id="fileAllegatoChiusura" style="margin: 3px 0 0 0; padding: 4px; font-size: 11px;">
+        </div>
+
+        <button id="btnConfermaAzione" class="btn btn-primary" style="margin-top: 10px; width: 100%;" onclick="confermaAggiornamentoStato()">Conferma e Invia Notifica</button>
+        <button class="btn" style="background:#ccc; color:#333; width: 100%; margin-top: 5px;" onclick="chiudiModal('modalAzione')">Annulla</button>
+    </div>
+</div>
+
+<script>
+    const SUPABASE_URL = 'https://ecgcofjfxnlbwzfsjumq.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_FDaXHj0MhyCoypAnhgmO7Q_6QKYHeWP';
+    const _supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const EMAIL_AUTORIZZATA_WRITER = "tecnico@htspcb.it";
+
+    let idSegnalazioneDaEliminare = null;
+
+    async function verificaSessione() {
+        const { data: { session } } = await _supabase.auth.getSession();
+        if (session) {
+            document.getElementById('loginOverlay').style.display = 'none';
+            caricaNC();
+
+            // 🔍 Controlliamo se si arriva dalla trasformazione di una Segnalazione
+            const datiSegnalazione = localStorage.getItem('nc_da_segnalazione');
+            if (datiSegnalazione) {
+                const dati = JSON.parse(datiSegnalazione);
+                idSegnalazioneDaEliminare = dati.id_segnalazione;
+
+                // Apre il modal della nuova NC e pre-popola i campi
+                document.getElementById('modalNuova').style.display = 'flex';
+                document.getElementById('nuovoCliente').value = dati.cliente || '';
+                document.getElementById('nuovoCodice').value = dati.codice || '';
+                document.getElementById('nuovaDescrizione').value = dati.descrizione || '';
+
+                // Puliamo il valore da localStorage per non riaprirlo al refresh
+                localStorage.removeItem('nc_da_segnalazione');
+            }
+        } else {
+            document.getElementById('loginOverlay').style.display = 'flex';
+        }
+    }
+
+    async function eseguiLogin() {
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+        const errDiv = document.getElementById('erroreLogin');
+
+        const { data, error } = await _supabase.auth.signInWithPassword({
+            email: email,
+            password: password
+        });
+
+        if (error) {
+            errDiv.innerText = "Credenziali non valide o errore di accesso.";
+        } else {
+            errDiv.innerText = "";
+            document.getElementById('loginOverlay').style.display = 'none';
+            caricaNC();
+        }
+    }
+
+    async function eseguiLogout() {
+        await _supabase.auth.signOut();
+        location.reload();
+    }
+
+    emailjs.init("VBxn0NlQfp5MfCHKp");
+
+    function formattaData(dataString) {
+        if (!dataString) return '';
+        const d = new Date(dataString);
+        return d.toLocaleDateString('it-IT') + ' ' + d.toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function calcolaDashboard(dati) {
+        let aperte = 0;
+        let totaleFornitori = 0;
+        let totaleClienti = 0;
+        let perditaTotaleReale = 0;
+
+        dati.forEach(nc => {
+            if (nc.stato === 'VERDE' || nc.stato === 'GIALLO') {
+                aperte++;
+            }
+
+            let impFornitore = nc.importo_nc_fornitore ? parseFloat(nc.importo_nc_fornitore) : 0;
+            let impCliente = nc.importo_nc_cliente ? parseFloat(nc.importo_nc_cliente) : 0;
+
+            totaleFornitori += impFornitore;
+            totaleClienti += impCliente;
+
+            let pezziNC = nc.pezzi_non_conformi ? parseInt(nc.pezzi_non_conformi) : 0;
+            let costoAcq = nc.costo_acquisto ? parseFloat(nc.costo_acquisto) : 0;
+            let valoreMaterialeScarto = pezziNC * costoAcq;
+
+            let perditaPratica = (valoreMaterialeScarto + impCliente) - impFornitore;
+            perditaTotaleReale += perditaPratica;
+        });
+
+        let bilancio = totaleFornitori - totaleClienti;
+
+        document.getElementById('kpiAperte').innerText = aperte;
+        document.getElementById('kpiRecuperoFornitori').innerText = '€ ' + totaleFornitori.toFixed(2);
+        document.getElementById('kpiNcClienti').innerText = '€ ' + totaleClienti.toFixed(2);
+        
+        const elemPerdita = document.getElementById('kpiPerditaReale');
+        elemPerdita.innerText = '€ ' + perditaTotaleReale.toFixed(2);
+
+        const elemBilancio = document.getElementById('kpiBilancio');
+        elemBilancio.innerText = '€ ' + bilancio.toFixed(2);
+        elemBilancio.style.color = bilancio >= 0 ? '#27ae60' : '#c0392b';
+    }
+
+    async function caricaNC() {
+        const annoSelezionato = document.getElementById('filtroAnno').value;
+        const clienteSelezionato = document.getElementById('filtroCliente').value;
+        const nascondiChiuse = document.getElementById('chkNascondiChiuse').checked;
+        
+        let query = _supabase.from('non_conformita').select('*');
+        
+        if (clienteSelezionato !== 'TUTTI') {
+            query = query.eq('cliente', clienteSelezionato);
+        }
+
+        const { data, error } = await query;
+        if (error) { console.error('Errore caricamento:', error); return; }
+
+        let datiFiltrati = data;
+        
+        if (annoSelezionato !== 'TUTTI') {
+            datiFiltrati = datiFiltrati.filter(nc => {
+                if (!nc.data_creazione) return false;
+                const annoNC = new Date(nc.data_creazione).getFullYear().toString();
+                return annoNC === annoSelezionato;
+            });
+        }
+
+        if (nascondiChiuse) {
+            datiFiltrati = datiFiltrati.filter(nc => nc.stato !== 'ROSSO');
+        }
+
+        const tbody = document.getElementById('tabellaNC');
+        tbody.innerHTML = '';
+
+        const { data: tuttiDati } = await _supabase.from('non_conformita').select('*');
+        if (tuttiDati) aggiornaFiltroClienti(tuttiDati);
+
+        calcolaDashboard(datiFiltrati);
+
+        datiFiltrati.forEach(nc => {
+            let badgeClass = nc.stato === 'VERDE' ? 'badge-verde' : nc.stato === 'GIALLO' ? 'badge-giallo' : 'badge-rosso';
+            let testoStato = nc.stato === 'VERDE' ? 'In Lavorazione (Tecnico)' : nc.stato === 'GIALLO' ? 'In Lavorazione (Amministrazione)' : 'Chiuso e Liquidato';
+            
+            let dataCreazioneFmt = formattaData(nc.data_creazione);
+            
+            let linkAllegatoIniziale = '';
+            if (nc.allegato_url) {
+                linkAllegatoIniziale = `<br><a href="${nc.allegato_url}" target="_blank" style="color: #2980b9; font-weight: bold; font-size: 11px; text-decoration: underline;">📎 Visualizza Documento / Foto Iniziale</a>`;
+            }
+
+            let infoLotto = '';
+            if (nc.pezzi_lotto || nc.pezzi_non_conformi || nc.costo_acquisto || nc.prezzo_vendita) {
+                let pLotto = nc.pezzi_lotto || 'N.D.';
+                let pNC = nc.pezzi_non_conformi || 'N.D.';
+                let cAcquisto = nc.costo_acquisto ? `€${parseFloat(nc.costo_acquisto).toFixed(2)}` : 'N.D.';
+                let pVendita = nc.prezzo_vendita ? `€${parseFloat(nc.prezzo_vendita).toFixed(2)}` : 'N.D.';
+                
+                infoLotto = `<br><span style="color: #8e44ad; font-size: 11px; font-weight: bold;">📦 Lotto: ${pLotto} pz | NC: ${pNC} pz | Costo Acq: ${cAcquisto} | Pr. Vendita: ${pVendita}</span>`;
+            }
+
+            let dettagliFirma = `<br><small style="color: #2980b9; font-weight: bold;">Causa: ${nc.causa_nc || 'Non Specificata'}</small>`;
+            dettagliFirma += `<br><small style="color: #666;">Fornitore: <strong>${nc.fornitore || 'N.D.'}</strong></small>`;
+            dettagliFirma += infoLotto;
+            dettagliFirma += `<br><small style="color: #666;">Aperto (${dataCreazioneFmt})</small>`;
+            dettagliFirma += linkAllegatoIniziale;
+
+            let bottoneAzione = '';
+            
+            if (nc.stato === 'VERDE') {
+                let btnModifica = `<button class="btn btn-primary" style="padding: 6px 10px; font-size: 11px; margin-right: 5px; background: #f39c12;" onclick="apriModalModifica('${nc.id}')" title="Modifica dati/descrizione">✏️ Modifica</button>`;
+                bottoneAzione = btnModifica + `<button class="btn btn-warning" onclick="preparaPassaggio('${nc.id}', 'GIALLO')">Passa ad Amministrazione</button>`;
+            } 
+            else if (nc.stato === 'GIALLO') {
+                let dataTecnicoFmt = formattaData(nc.data_tecnico);
+                if (dataTecnicoFmt || nc.nota_tecnico) {
+                    dettagliFirma += `<br><small style="color: #d35400; font-weight: bold;">🔧 Chiusura Tecnica (${dataTecnicoFmt}):</small> <small style="color: #333;">${nc.nota_tecnico || ''}</small>`;
+                }
+                bottoneAzione = `<button class="btn btn-danger" onclick="preparaPassaggio('${nc.id}', 'ROSSO')">Chiudi e Liquida (ROSSO)</button>`;
+            } 
+            else {
+                let dataTecnicoFmt = formattaData(nc.data_tecnico);
+                let dataAdminFmt = formattaData(nc.data_amministrazione);
+                
+                if (nc.nota_tecnico) {
+                    dettagliFirma += `<br><small style="color: #d35400;">🔧 Tecnico (${dataTecnicoFmt}): ${nc.nota_tecnico}</small>`;
+                }
+                if (nc.risoluzione_finale) {
+                    dettagliFirma += `<br><small style="color: #27ae60; font-weight: bold;">💼 Amministrazione (${dataAdminFmt}):</small> <small style="color: #333;">${nc.risoluzione_finale}</small>`;
+                }
+
+                let infoEconomiche = '';
+                if (nc.importo_nc_fornitore || nc.importo_nc_cliente || nc.numero_nc_documento || nc.allegato_chiusura_url || nc.costo_acquisto || nc.pezzi_non_conformi) {
+                    let numDoc = nc.numero_nc_documento ? nc.numero_nc_documento : 'N.D.';
+                    let impFornitore = nc.importo_nc_fornitore ? parseFloat(nc.importo_nc_fornitore) : 0;
+                    let impCliente = nc.importo_nc_cliente ? parseFloat(nc.importo_nc_cliente) : 0;
+                    
+                    let pezziNC = nc.pezzi_non_conformi ? parseInt(nc.pezzi_non_conformi) : 0;
+                    let costoAcq = nc.costo_acquisto ? parseFloat(nc.costo_acquisto) : 0;
+                    let costoMaterialeScarto = pezziNC * costoAcq;
+
+                    let perditaPratica = (costoMaterialeScarto + impCliente) - impFornitore;
+                    let colorePerdita = perditaPratica > 0 ? '#c0392b' : '#27ae60';
+
+                    let linkNotaCredito = nc.allegato_chiusura_url ? ` | <a href="${nc.allegato_chiusura_url}" target="_blank" style="color: #2980b9; font-weight: bold; text-decoration: underline;">Visualizza documento di chiusura</a>` : '';
+
+                    infoEconomiche = `<br><span style="color: #2c3e50; font-weight: bold; font-size: 11px;">[Nota di credito: ${numDoc} | Recuperato Fornitore: €${impFornitore.toFixed(2)} | Rimborsato Cliente: €${impCliente.toFixed(2)} | <span style="color: ${colorePerdita};">Perdita Reale: €${perditaPratica.toFixed(2)}</span>${linkNotaCredito}]</span>`;
+                }
+
+                bottoneAzione = `<small style="color: #27ae60; font-weight: bold;">Pratica Chiusa</small>${infoEconomiche}`;
+            }
+
+            tbody.innerHTML += `
+                <tr>
+                    <td><strong>${nc.codice_nc}</strong></td>
+                    <td>${nc.cliente}</td>
+                    <td>${nc.descrizione} ${dettagliFirma}</td>
+                    <td><span class="badge ${badgeClass}">${testoStato}</span></td>
+                    <td>${bottoneAzione}</td>
+                </tr>
+            `;
+        });
+    }            
+
+    function aggiornaFiltroClienti(dati) {
+        const select = document.getElementById('filtroCliente');
+        const valoreAttuale = select.value;
+        const clientiUnici = [...new Set(dati.map(d => d.cliente))].filter(Boolean).sort();
+        
+        select.innerHTML = '<option value="TUTTI">-- Tutti i Clienti --</option>';
+        clientiUnici.forEach(c => {
+            select.innerHTML += `<option value="${c}" ${c === valoreAttuale ? 'selected' : ''}>${c}</option>`;
+        });
+    }
+
+    function chiudiModal(id) { document.getElementById(id).style.display = 'none'; }
+
+    async function apriModalNuovaNC() {
+        const { data: { user } } = await _supabase.auth.getUser();
+        if (!user || user.email !== EMAIL_AUTORIZZATA_WRITER) {
+            alert("⛔ Accesso negato: Il tuo account è in sola lettura. Non puoi creare nuove Non Conformità.");
+            return;
+        }
+        document.getElementById('modalNuova').style.display = 'flex';
+    }
+
+    async function salvaNuovaNC() {
+        const cliente = document.getElementById('nuovoCliente').value;
+        const fornitore = document.getElementById('nuovoFornitore').value;
+        const codice = document.getElementById('nuovoCodice').value;
+        const causa = document.getElementById('nuovaCausa').value;
+        const descrizione = document.getElementById('nuovaDescrizione').value;
+        
+        const pezziLotto = document.getElementById('nuovoPezziLotto').value;
+        const pezziNC = document.getElementById('nuovoPezziNC').value;
+        const costoAcquisto = document.getElementById('nuovoCostoAcquisto').value;
+        const prezzoVendita = document.getElementById('nuovoPrezzoVendita').value;
+
+        const fileInput = document.getElementById('fileAllegato');
+
+        if(!cliente || !codice) { alert("Compila cliente e codice CS!"); return; }
+
+        const { data: { user } } = await _supabase.auth.getUser();
+        const emailUtente = user ? user.email : 'Sconosciuto';
+
+        let allegatoUrl = null;
+
+        if (fileInput.files.length > 0) {
+            const file = fileInput.files[0];
+            const fileName = `${Date.now()}_${file.name}`;
+            
+            const { error: uploadError } = await _supabase.storage
+                .from('nc-files')
+                .upload(fileName, file);
+
+            if (uploadError) {
+                alert("Errore nel caricamento del file: " + uploadError.message);
+                return;
+            }
+
+            const { data: publicUrlData } = _supabase.storage
+                .from('nc-files')
+                .getPublicUrl(fileName);
+                
+            allegatoUrl = publicUrlData.publicUrl;
+        }
+
+        const nuovoOggettoNC = { 
+            cliente: cliente, 
+            fornitore: fornitore, 
+            codice_nc: codice, 
+            causa_nc: causa, 
+            descrizione: descrizione, 
+            pezzi_lotto: pezziLotto ? parseInt(pezziLotto) : null,
+            pezzi_non_conformi: pezziNC ? parseInt(pezziNC) : null,
+            costo_acquisto: costoAcquisto ? parseFloat(costoAcquisto) : null,
+            prezzo_vendita: prezzoVendita ? parseFloat(prezzoVendita) : null,
+            allegato_url: allegatoUrl, 
+            stato: 'VERDE',
+            creato_da: emailUtente,
+            data_creazione: new Date().toISOString()
+        };
+
+        const { error } = await _supabase.from('non_conformita').insert([nuovoOggettoNC]);
+
+        if (error) {
+            alert("Errore Supabase: " + error.message);
+        } else {
+            // Se arrivava da una segnalazione, eliminala dalla tabella delle segnalazioni
+            if (idSegnalazioneDaEliminare) {
+                await _supabase.from('segnalazioni').delete().eq('id', idSegnalazioneDaEliminare);
+                idSegnalazioneDaEliminare = null;
+            }
+
+            inviaEmailNuovaNC(nuovoOggettoNC);
+            chiudiModal('modalNuova');
+            
+            document.getElementById('nuovoCliente').value = '';
+            document.getElementById('nuovoFornitore').value = '';
+            document.getElementById('nuovoCodice').value = '';
+            document.getElementById('nuovaCausa').value = 'Non Specificato';
+            document.getElementById('nuovaDescrizione').value = '';
+            document.getElementById('nuovoPezziLotto').value = '';
+            document.getElementById('nuovoPezziNC').value = '';
+            document.getElementById('nuovoCostoAcquisto').value = '';
+            document.getElementById('nuovoPrezzoVendita').value = '';
+            fileInput.value = '';
+            
+            caricaNC();
+        }
+    }
+
+    async function apriModalModifica(id) {
+        const { data: { user } } = await _supabase.auth.getUser();
+        if (!user || user.email !== EMAIL_AUTORIZZATA_WRITER) {
+            alert("⛔ Accesso negato: Non hai i permessi di scrittura.");
+            return;
+        }
+
+        const { data, error } = await _supabase.from('non_conformita').select('*').eq('id', id).single();
+        if (error || !data) { alert("Errore nel recupero della pratica"); return; }
+
+        if (data.stato !== 'VERDE') {
+            alert("⚠️ Questa pratica non è più in stato Verde (Tecnico). Le pratiche in stato Giallo o Rosso non possono essere modificate.");
+            return;
+        }
+
+        document.getElementById('editIdNC').value = data.id;
+        document.getElementById('editCliente').value = data.cliente || '';
+        document.getElementById('editFornitore').value = data.fornitore || '';
+        document.getElementById('editCodice').value = data.codice_nc || '';
+        document.getElementById('editCausa').value = data.causa_nc || 'Non Specificato';
+        document.getElementById('editDescrizione').value = data.descrizione || '';
+        document.getElementById('editPezziLotto').value = data.pezzi_lotto || '';
+        document.getElementById('editPezziNC').value = data.pezzi_non_conformi || '';
+        document.getElementById('editCostoAcquisto').value = data.costo_acquisto || '';
+        document.getElementById('editPrezzoVendita').value = data.prezzo_vendita || '';
+
+        document.getElementById('modalModifica').style.display = 'flex';
+    }
+
+    async function salvaModificaNC() {
+        const id = document.getElementById('editIdNC').value;
+        const cliente = document.getElementById('editCliente').value;
+        const fornitore = document.getElementById('editFornitore').value;
+        const codice = document.getElementById('editCodice').value;
+        const causa = document.getElementById('editCausa').value;
+        const descrizione = document.getElementById('editDescrizione').value;
+        
+        const pezziLotto = document.getElementById('editPezziLotto').value;
+        const pezziNC = document.getElementById('editPezziNC').value;
+        const costoAcquisto = document.getElementById('editCostoAcquisto').value;
+        const prezzoVendita = document.getElementById('editPrezzoVendita').value;
+
+        if (!cliente || !codice) { 
+            alert("Cliente e Codice CS sono obbligatori!"); 
+            return; 
+        }
+
+        const payloadAggiornamento = {
+            cliente: cliente,
+            fornitore: fornitore,
+            codice_nc: codice,
+            causa_nc: causa,
+            descrizione: descrizione,
+            pezzi_lotto: pezziLotto ? parseInt(pezziLotto) : null,
+            pezzi_non_conformi: pezziNC ? parseInt(pezziNC) : null,
+            costo_acquisto: costoAcquisto ? parseFloat(costoAcquisto) : null,
+            prezzo_vendita: prezzoVendita ? parseFloat(prezzoVendita) : null
+        };
+
+        const { error } = await _supabase
+            .from('non_conformita')
+            .update(payloadAggiornamento)
+            .eq('id', id);
+
+        if (error) {
+            alert("Errore durante l'aggiornamento: " + error.message);
+        } else {
+            alert("✅ Pratica aggiornata con successo!");
+            chiudiModal('modalModifica');
+            caricaNC();
+        }
+    }
+
+    let ncSelezionata = null;
+
+    async function preparaPassaggio(id, prossimoStato) {
+        const { data: { user } } = await _supabase.auth.getUser();
+        if (!user || user.email !== EMAIL_AUTORIZZATA_WRITER) {
+            alert("⛔ Accesso negato: Il tuo account è in sola lettura. Non puoi modificare o avanzare lo stato delle pratiche.");
+            return;
+        }
+
+        const { data, error } = await _supabase.from('non_conformita').select('*').eq('id', id).single();
+        if (error) { alert("Errore nel recupero dati"); return; }
+        
+        ncSelezionata = data;
+
+        document.getElementById('idNCSelezionata').value = id;
+        document.getElementById('prossimoStato').value = prossimoStato;
+        
+        document.getElementById('importoNcFornitore').value = '';
+        document.getElementById('importoNcCliente').value = '';
+        document.getElementById('numeroNcDocumento').value = '';
+
+        const sezioneEco = document.getElementById('sezioneEconomica');
+
+        if (prossimoStato === 'GIALLO') {
+            document.getElementById('modalTitoloAzione').innerText = "Passaggio ad Amministrazione (GIALLO)";
+            document.getElementById('labelNota').innerText = "Riferimento chiusura tecnica (es. mail del 10/10/2026):";
+            sezioneEco.style.display = 'none';
+        } else {
+            document.getElementById('modalTitoloAzione').innerText = "Chiusura Definitiva (ROSSO)";
+            document.getElementById('labelNota').innerText = "Risoluzione / Riscontro economico:";
+            sezioneEco.style.display = 'block';
+        }
+
+        document.getElementById('modalAzione').style.display = 'flex';
+    }
+
+    async function confermaAggiornamentoStato() {
+        const id = document.getElementById('idNCSelezionata').value;
+        const prossimoStato = document.getElementById('prossimoStato').value;
+        const nota = document.getElementById('notaAzione').value;
+
+        if(!nota) { alert("Inserisci una nota di riferimento obbligatoria!"); return; }
+
+        const { data: { user } } = await _supabase.auth.getUser();
+        const emailUtente = user ? user.email : 'Sconosciuto';
+        const timestampCorrente = new Date().toISOString();
+
+        let updatePayload = { stato: prossimoStato };
+        
+        if (prossimoStato === 'GIALLO') {
+            updatePayload.nota_tecnico = nota;
+            updatePayload.tecnico_chiusura_da = emailUtente;
+            updatePayload.data_tecnico = timestampCorrente;
+        }
+        
+        if (prossimoStato === 'ROSSO') {
+            updatePayload.risoluzione_finale = nota;
+            updatePayload.amministrazione_chiusura_da = emailUtente;
+            updatePayload.data_amministrazione = timestampCorrente;
+            
+            const impFornitore = document.getElementById('importoNcFornitore').value;
+            const impCliente = document.getElementById('importoNcCliente').value;
+            const numDoc = document.getElementById('numeroNcDocumento').value;
+            const fileInputChiusura = document.getElementById('fileAllegatoChiusura');
+
+            if (impFornitore) updatePayload.importo_nc_fornitore = parseFloat(impFornitore);
+            if (impCliente) updatePayload.importo_nc_cliente = parseFloat(impCliente);
+            if (numDoc) updatePayload.numero_nc_documento = numDoc;
+
+            if (fileInputChiusura.files.length > 0) {
+                const file = fileInputChiusura.files[0];
+                const fileName = `chiusura_${Date.now()}_${file.name}`;
+                
+                const { error: uploadError } = await _supabase.storage
+                    .from('nc-files')
+                    .upload(fileName, file);
+
+                if (uploadError) {
+                    alert("Errore nel caricamento del file di chiusura: " + uploadError.message);
+                    return;
+                }
+
+                const { data: publicUrlData } = _supabase.storage
+                    .from('nc-files')
+                    .getPublicUrl(fileName);
+                    
+                updatePayload.allegato_chiusura_url = publicUrlData.publicUrl;
+            }
+        }
+
+        const { error } = await _supabase.from('non_conformita').update(updatePayload).eq('id', id);
+
+        if (!error) {
+            inviaEmailNotifica(ncSelezionata, prossimoStato, nota);
+            chiudiModal('modalAzione');
+            document.getElementById('notaAzione').value = '';
+            document.getElementById('fileAllegatoChiusura').value = '';
+            caricaNC();
+        } else {
+            alert("Errore durante l'aggiornamento: " + error.message);
+        }
+    }
+
+    async function esportaInExcel() {
+        const annoSelezionato = document.getElementById('filtroAnno').value;
+        const clienteSelezionato = document.getElementById('filtroCliente').value;
+        const nascondiChiuse = document.getElementById('chkNascondiChiuse').checked;
+
+        let query = _supabase.from('non_conformita').select('*');
+        if (clienteSelezionato !== 'TUTTI') {
+            query = query.eq('cliente', clienteSelezionato);
+        }
+
+        const { data, error } = await query;
+        if (error || !data) {
+            alert("Errore nel recupero dati per l'esportazione: " + (error ? error.message : 'Dati non disponibili'));
+            return;
+        }
+
+        let datiDaEsportare = data;
+        if (annoSelezionato !== 'TUTTI') {
+            datiDaEsportare = datiDaEsportare.filter(nc => {
+                if (!nc.data_creazione) return false;
+                return new Date(nc.data_creazione).getFullYear().toString() === annoSelezionato;
+            });
+        }
+        if (nascondiChiuse) {
+            datiDaEsportare = datiDaEsportare.filter(nc => nc.stato !== 'ROSSO');
+        }
+
+        if (datiDaEsportare.length === 0) {
+            alert("Nessun dato da esportare con i filtri selezionati.");
+            return;
+        }
+
+        const righeExcel = datiDaEsportare.map(nc => {
+            let pezziNC = nc.pezzi_non_conformi ? parseInt(nc.pezzi_non_conformi) : 0;
+            let costoAcq = nc.costo_acquisto ? parseFloat(nc.costo_acquisto) : 0;
+            let impFornitore = nc.importo_nc_fornitore ? parseFloat(nc.importo_nc_fornitore) : 0;
+            let impCliente = nc.importo_nc_cliente ? parseFloat(nc.importo_nc_cliente) : 0;
+
+            let perditaPratica = (pezziNC * costoAcq + impCliente) - impFornitore;
+            let testoStato = nc.stato === 'VERDE' ? 'Aperta (Tecnico)' : 
+                             nc.stato === 'GIALLO' ? 'In lavorazione (Amministrazione)' : 'Chiusa e Liquidata';
+
+            return {
+                "Codice CS": nc.codice_nc || '',
+                "Cliente": nc.cliente || '',
+                "Fornitore": nc.fornitore || '',
+                "Causa / Reparto": nc.causa_nc || '',
+                "Stato": testoStato,
+                "Descrizione Problema": nc.descrizione || '',
+                "Pezzi Lotto": nc.pezzi_lotto || 0,
+                "Pezzi NC": pezziNC,
+                "Costo Acq. Unitario (€)": costoAcq,
+                "Prezzo Vendita Unitario (€)": nc.prezzo_vendita ? parseFloat(nc.prezzo_vendita) : 0,
+                "Recupero Fornitore (€)": impFornitore,
+                "Rimborso Cliente (€)": impCliente,
+                "Perdita Netta Reale (€)": perditaPratica,
+                "N. Doc / Nota Credito": nc.numero_nc_documento || '',
+                "Nota Tecnico": nc.nota_tecnico || '',
+                "Risoluzione Finale": nc.risoluzione_finale || '',
+                "Data Apertura": nc.data_creazione ? new Date(nc.data_creazione).toLocaleDateString('it-IT') : ''
+            };
+        });
+
+        const worksheet = XLSX.utils.json_to_sheet(righeExcel);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Report NC");
+
+        let nomeClienteFile = clienteSelezionato === 'TUTTI' ? 'Tutti_i_Clienti' : clienteSelezionato.replace(/[^a-zA-Z0-9]/g, '_');
+        let nomeAnnoFile = annoSelezionato === 'TUTTI' ? 'Tutti_gli_Anni' : annoSelezionato;
+        let nomeFile = `Report_NC_${nomeClienteFile}_${nomeAnnoFile}.xlsx`;
+
+        XLSX.writeFile(workbook, nomeFile);
+    }
+
+    function inviaEmailNuovaNC(nc) {
+        const SERVICE_ID = 'service_4eprhvs';
+        const TEMPLATE_ID = 'template_pcz4vub'; 
+        const PUBLIC_KEY = 'VBxn0NlQfp5MfCHKp';
+
+        const templateParams = {
+            to_email: "claudio.perez@htspcb.it, chiara@htspcb.it, sara@htspcb.it",
+            subject_email: `Nuova Non Conformità codice ${nc.codice_nc} / ${nc.cliente}`,
+
+            codice_nc: nc.codice_nc,
+            cliente: nc.cliente,
+            fornitore: nc.fornitore || 'N.D.',
+            descrizione: nc.descrizione,
+            causa_nc: nc.causa_nc,
+            pezzi_lotto: nc.pezzi_lotto || 'N.D.',
+            pezzi_non_conformi: nc.pezzi_non_conformi || 'N.D.',
+            costo_acquisto: nc.costo_acquisto ? `€${parseFloat(nc.costo_acquisto).toFixed(2)}` : 'N.D.',
+            prezzo_vendita: nc.prezzo_vendita ? `€${parseFloat(nc.prezzo_vendita).toFixed(2)}` : 'N.D.',
+            date: new Date().toLocaleDateString('it-IT')
+        };
+
+        emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
+    }
+
+    function inviaEmailNotifica(nc, stato, nota) {
+        const SERVICE_ID = 'service_4eprhvs';
+        const TEMPLATE_ID = 'template_z4qq9ej';
+        const PUBLIC_KEY = 'VBxn0NlQfp5MfCHKp';
+
+        if (stato !== 'ROSSO') return;
+
+        const codiceNC = nc.codice_nc || 'N.D.';
+        const clienteNC = nc.cliente || 'N.D.';
+        const descrizioneNC = nc.descrizione || 'N.D.';
+
+        const impFornitore = document.getElementById('importoNcFornitore').value;
+        const impCliente = document.getElementById('importoNcCliente').value;
+        const numDoc = document.getElementById('numeroNcDocumento').value;
+        const dataOdiernaFmt = new Date().toLocaleDateString('it-IT');
+
+        const templateParams = {
+            to_email: "claudio.perez@htspcb.it, chiara@htspcb.it, sara@htspcb.it, sonia@htspcb.it",
+            codice_nc: codiceNC,
+            cliente: clienteNC,
+            descrizione: descrizioneNC,
+            titolo_notizia: `Chiusura non conformità codice ${codiceNC} / ${clienteNC}`,
+            testo_principale: `In data ${dataOdiernaFmt} viene chiusa la non conformità codice ${codiceNC} / ${clienteNC} dovuta a: ${descrizioneNC}.`,
+            data_chiusura: dataOdiernaFmt,
+            pezzi_lotto: nc.pezzi_lotto || 'N.D.',
+            pezzi_non_conformi: nc.pezzi_non_conformi || 'N.D.',
+            costo_acquisto: nc.costo_acquisto ? `€${parseFloat(nc.costo_acquisto).toFixed(2)}` : 'N.D.',
+            prezzo_vendita: nc.prezzo_vendita ? `€${parseFloat(nc.prezzo_vendita).toFixed(2)}` : 'N.D.',
+            nota_di_credito: numDoc || 'N.D.',
+            recuperato_fornitore: impFornitore ? `€${parseFloat(impFornitore).toFixed(2)}` : '€0.00',
+            rimborsato_cliente: impCliente ? `€${parseFloat(impCliente).toFixed(2)}` : '€0.00',
+            risoluzione: nota
+        };
+
+        emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY);
+    }
+
+    verificaSessione();
+</script>
+</body>
+</html>
